@@ -14,7 +14,5 @@ export const GET = async () => {
     }, {
         status: 403
     })
-
-
-
+    console.log("check")
 }
