@@ -1,19 +1,21 @@
-"use server"
-
-import { getServerSession } from "next-auth"
-import { authOptions } from "../auth"
+"use server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "../auth";
 import prisma from "@repo/db/client";
-import { error } from "console";
-import { resolve } from "path";
 
-export async function P2pTransfer(to: string, amount: number) {
-    // check the user is valid user
-    const session = await getServerSession(authOptions)
+export async function p2pTransfer(to: string, amount: number) {
+    const session = await getServerSession(authOptions);
     const from = session?.user?.id;
     if (!from) {
         return {
-            message: "error while sending",
-        }
+            message: "Unauthorized: Error while sending"
+        };
+    }
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+        return {
+            message: "Please enter a valid amount"
+        };
     }
 
     const toUser = await prisma.user.findFirst({
@@ -21,34 +23,62 @@ export async function P2pTransfer(to: string, amount: number) {
             number: to
         }
     });
+
     if (!toUser) {
         return {
-            message: "user not found"
-        }
+            message: "User not found"
+        };
     }
 
-    await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT * FROM "BALANCE" WHERE "userId" = ${Number(from)} FOR UPDATE`
-        const fromBalance = await tx.balance.findUnique({
-            where: { userId: Number(from) },
+    if (toUser.id === Number(from)) {
+        return {
+            message: "Cannot transfer money to yourself"
+        };
+    }
+
+    const transferAmountInPaise = Math.round(amount * 100);
+
+    try {
+        await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT * FROM "Balance" WHERE "userId" = ${Number(from)} FOR UPDATE`;
+
+            const fromBalance = await tx.balance.findUnique({
+                where: { userId: Number(from) },
+            });
+
+            if (!fromBalance || fromBalance.amount < transferAmountInPaise) {
+                throw new Error("Insufficient funds");
+            }
+
+            await tx.balance.update({
+                where: { userId: Number(from) },
+                data: { amount: { decrement: transferAmountInPaise } },
+            });
+
+            await tx.balance.upsert({
+                where: { userId: toUser.id },
+                update: { amount: { increment: transferAmountInPaise } },
+                create: { userId: toUser.id, amount: transferAmountInPaise, locked: 0 }
+            });
+
+            await tx.p2pTransfer.create({
+                data: {
+                    fromUserId: Number(from),
+                    toUserId: toUser.id,
+                    amount: transferAmountInPaise,
+                    timestamp: new Date()
+                }
+            });
         });
-        console.log("above sleep")
-        await new Promise(resolve => setTimeout(resolve, 4000));
-        if (!fromBalance || fromBalance.amount < amount) {
-            throw new Error("insufficent funds");
-        }
-        console.log("after sleep");
 
-        await tx.balance.update({
-            where: { userId: Number(from) },
-            data: { amount: { decrement: amount } }
-        })
-
-        await tx.balance.update({
-            where: { userId: toUser.id },
-            data: { amount: { increment: amount } }
-        })
-    });
-
-
+        return {
+            message: "Transfer successful",
+            success: true
+        };
+    } catch (e: any) {
+        return {
+            message: e?.message || "Transfer failed",
+            success: false
+        };
+    }
 }
