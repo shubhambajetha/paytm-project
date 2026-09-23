@@ -7,7 +7,8 @@
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "db:generate": "prisma generate --schema=packages/db/prisma/schema.prisma",
-    "postinstall": "npm run db:generate"
+    "postinstall": "npm run db:generate",
+    "start-user-app": "cd ./apps/user-app && npm run start"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
