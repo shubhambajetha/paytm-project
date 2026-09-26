@@ -47,4 +47,4 @@ jobs:
           context: .
           file: ./apps/docker/Dockerfile.user
           push: true
-          tags: shubhiiiiii/paytemproject:latest
+          tags: shubhiiiiiiii/paytemproject:latest
